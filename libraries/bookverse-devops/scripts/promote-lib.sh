@@ -217,16 +217,16 @@ promote_to_stage() {
   local api_stage
   api_stage=$(api_stage_for "$target_stage_display")
   echo "🚀 Promoting to ${target_stage_display} via AppTrust"
-  # CRITICAL: async=false is REQUIRED for promotions to prevent concurrent promotion conflicts!
+  # CRITICAL: async=true is REQUIRED for promotions to prevent concurrent promotion conflicts!
   # DO NOT CHANGE TO async=true - it causes "promotion already in progress" failures!
   if apptrust_post \
-    "/apptrust/api/v1/applications/${APPLICATION_KEY}/versions/${APP_VERSION}/promote?async=false" \
+    "/apptrust/api/v1/applications/${APPLICATION_KEY}/versions/${APP_VERSION}/promote?async=true" \
     "{\"target_stage\": \"${api_stage}\", \"promotion_type\": \"move\"}" \
     "$resp_body"; then
     echo "HTTP OK"; cat "$resp_body" || true; echo
   else
     echo "❌ Promotion to ${target_stage_display} failed" >&2
-    print_request_info "POST" "${JFROG_URL}/apptrust/api/v1/applications/${APPLICATION_KEY}/versions/${APP_VERSION}/promote?async=false" "{\"target_stage\": \"${api_stage}\", \"promotion_type\": \"move\"}"
+    print_request_info "POST" "${JFROG_URL}/apptrust/api/v1/applications/${APPLICATION_KEY}/versions/${APP_VERSION}/promote?async=true" "{\"target_stage\": \"${api_stage}\", \"promotion_type\": \"move\"}"
     cat "$resp_body" || true; echo
     rm -f "$resp_body"
     return 1
@@ -295,16 +295,16 @@ release_version() {
     done
     payload=$(printf '{"promotion_type":"move","included_repository_keys":[%s]}' "$repos_json")
   fi
-  # CRITICAL: async=false is REQUIRED for releases to prevent concurrent promotion conflicts!
+  # CRITICAL: async=true is REQUIRED for releases to prevent concurrent promotion conflicts!
   # DO NOT CHANGE TO async=true - it causes "promotion already in progress" failures!
   if apptrust_post \
-    "/apptrust/api/v1/applications/${APPLICATION_KEY}/versions/${APP_VERSION}/release?async=false" \
+    "/apptrust/api/v1/applications/${APPLICATION_KEY}/versions/${APP_VERSION}/release?async=true" \
     "$payload" \
     "$resp_body"; then
     echo "HTTP OK"; cat "$resp_body" || true; echo
   else
     echo "❌ Release to ${FINAL_STAGE} failed" >&2
-    print_request_info "POST" "${JFROG_URL}/apptrust/api/v1/applications/${APPLICATION_KEY}/versions/${APP_VERSION}/release?async=false" "$payload"
+    print_request_info "POST" "${JFROG_URL}/apptrust/api/v1/applications/${APPLICATION_KEY}/versions/${APP_VERSION}/release?async=true" "$payload"
     echo "❌ Response Body:"
     cat "$resp_body" || echo "(no response body available)"
     echo ""
