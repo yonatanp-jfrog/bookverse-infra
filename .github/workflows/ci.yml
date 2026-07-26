@@ -258,7 +258,9 @@ jobs:
           echo "🏷️ Build: $BUILD_NAME"
 
       - name: "[Setup] Install and Configure JFrog CLI"
-        uses: EyalDelarea/setup-jfrog-cli@swampUpAppTrust
+        uses: jfrog/setup-jfrog-cli@v4
+        with:
+          version: 2.88.0
         env:
           JF_URL: ${{ vars.JFROG_URL }}
           JF_PROJECT: ${{ vars.PROJECT_KEY }}
@@ -266,9 +268,7 @@ jobs:
           JFROG_CLI_BUILD_NUMBER: ${{ env.BUILD_NUMBER }}
           JFROG_CLI_BUILD_PROJECT: ${{ vars.PROJECT_KEY }}
         with:
-          version: latest
           oidc-provider-name: bookverse-infra-github
-          oidc-audience: ${{ vars.JFROG_URL }}
           disable-job-summary: false
           disable-auto-build-publish: true
           disable-auto-evidence-collection: false
@@ -344,8 +344,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          jf rt upload "dist/*.whl" "${{ vars.PROJECT_KEY }}-core-internal-python-nonprod-local/" --build-name "$BUILD_NAME" --build-number "$BUILD_NUMBER"
-          jf rt upload "dist/*.tar.gz" "${{ vars.PROJECT_KEY }}-core-internal-python-nonprod-local/" --build-name "$BUILD_NAME" --build-number "$BUILD_NUMBER"
+          jf rt upload "dist/*.whl" "${{ vars.PROJECT_KEY }}-core-internal-python-DEV-local/" --build-name "$BUILD_NAME" --build-number "$BUILD_NUMBER"
+          jf rt upload "dist/*.tar.gz" "${{ vars.PROJECT_KEY }}-core-internal-python-DEV-local/" --build-name "$BUILD_NAME" --build-number "$BUILD_NUMBER"
 
           echo "ℹ️  Coverage upload temporarily disabled - repository not available"
 
@@ -448,7 +448,9 @@ jobs:
           echo "🏷️ Build: $BUILD_NAME"
 
       - name: "[Setup] Install and Configure JFrog CLI"
-        uses: EyalDelarea/setup-jfrog-cli@swampUpAppTrust
+        uses: jfrog/setup-jfrog-cli@v4
+        with:
+          version: 2.88.0
         env:
           JF_URL: ${{ vars.JFROG_URL }}
           JF_PROJECT: ${{ vars.PROJECT_KEY }}
@@ -458,7 +460,6 @@ jobs:
         with:
           version: latest
           oidc-provider-name: bookverse-infra-github
-          oidc-audience: ${{ vars.JFROG_URL }}
           disable-job-summary: false
           disable-auto-build-publish: true
           disable-auto-evidence-collection: false
@@ -642,7 +643,9 @@ jobs:
           path: bookverse-infra
 
       - name: "[Setup] JFrog CLI"
-        uses: EyalDelarea/setup-jfrog-cli@swampUpAppTrust
+        uses: jfrog/setup-jfrog-cli@v4
+        with:
+          version: 2.88.0
         id: jfrog-cli-auth
         env:
           JF_URL: ${{ vars.JFROG_URL }}
@@ -650,7 +653,6 @@ jobs:
         with:
           version: latest
           oidc-provider-name: bookverse-infra-github
-          oidc-audience: ${{ vars.JFROG_URL }}
           disable-job-summary: true
           disable-auto-build-publish: true
           disable-auto-evidence-collection: false
@@ -935,6 +937,7 @@ jobs:
           echo "- **STAGING**: Promoted ✅ + Evidence (IaC scan, pentest, change approval)" >> $GITHUB_STEP_SUMMARY
           echo "- **PROD**: Promoted ✅ + Evidence (deployment verification)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          
           echo "### ✅ Deployment Status" >> $GITHUB_STEP_SUMMARY
           echo "- Infrastructure libraries available in JFrog Artifactory" >> $GITHUB_STEP_SUMMARY
           echo "- Services can consume bookverse-core and bookverse-devops libraries" >> $GITHUB_STEP_SUMMARY

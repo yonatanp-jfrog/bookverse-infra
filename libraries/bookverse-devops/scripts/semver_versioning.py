@@ -60,6 +60,36 @@ import urllib.parse
 SEMVER_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 
 
+def stage_suffix_for_repo(stage: str) -> str:
+    """
+    Extract the repo suffix from a stage name for repository key construction.
+
+    Stage names may include a project prefix (e.g. "bookverse-DEV", "bookverse-QA").
+    This strips the prefix and returns the lowercase suffix used in repo names
+    (e.g. "dev", "qa"). Lowercase is required for Docker image paths.
+
+    Args:
+        stage: Stage name, e.g. "bookverse-DEV", "bookverse-QA", or "DEV"
+
+    Returns:
+        Lowercase suffix for repo naming, e.g. "dev", "qa". Defaults to "dev" if empty.
+
+    Examples:
+        >>> stage_suffix_for_repo("bookverse-DEV")
+        'dev'
+        >>> stage_suffix_for_repo("bookverse-QA")
+        'qa'
+        >>> stage_suffix_for_repo("DEV")
+        'dev'
+    """
+    s = (stage or "").strip()
+    if not s:
+        return "dev"
+    if "-" in s:
+        return s.rsplit("-", 1)[-1].lower()
+    return s.lower()
+
+
 def parse_semver(v: str) -> Optional[Tuple[int, int, int]]:
     """
     Parse a semantic version string into its component parts.
@@ -244,7 +274,15 @@ def compute_next_application_version(app_key: str, vm: Dict[str, Any], jfrog_url
 
 
 
-def compute_next_package_tag(app_key: str, package_name: str, vm: Dict[str, Any], jfrog_url: str, token: str, project_key: Optional[str]) -> str:
+def compute_next_package_tag(
+    app_key: str,
+    package_name: str,
+    vm: Dict[str, Any],
+    jfrog_url: str,
+    token: str,
+    project_key: Optional[str],
+    repo_stage: str = "DEV",
+) -> str:
     entry = find_app_entry(vm, app_key)
     pkg = None
     for it in (entry.get("packages") or []):
@@ -268,7 +306,7 @@ def compute_next_package_tag(app_key: str, package_name: str, vm: Dict[str, Any]
     if package_type == "docker":
         try:
             service_name = app_key.replace("bookverse-", "")
-            repo_key = f"{project_key or 'bookverse'}-{service_name}-internal-docker-nonprod-local"
+            repo_key = f"{project_key or 'bookverse'}-{service_name}-internal-docker-{repo_stage}-local"
             docker_url = f"{jfrog_url.rstrip('/')}/artifactory/api/docker/{repo_key}/v2/{package_name}/tags/list"
             
             resp = http_get(docker_url, headers)
@@ -290,7 +328,7 @@ def compute_next_package_tag(app_key: str, package_name: str, vm: Dict[str, Any]
     elif package_type == "generic":
         try:
             service_name = app_key.replace("bookverse-", "")
-            repo_key = f"{project_key or 'bookverse'}-{service_name}-internal-generic-nonprod-local"
+            repo_key = f"{project_key or 'bookverse'}-{service_name}-internal-generic-{repo_stage}-local"
             
             aql_query = f'''items.find({{"repo":"{repo_key}","type":"file"}}).include("name","path","actual_sha1")'''
             aql_url = f"{jfrog_url.rstrip('/')}/artifactory/api/search/aql"
@@ -326,7 +364,7 @@ def compute_next_package_tag(app_key: str, package_name: str, vm: Dict[str, Any]
     elif package_type == "helm":
         try:
             service_name = app_key.replace("bookverse-", "")
-            repo_key = f"{project_key or 'bookverse'}-{service_name}-internal-helm-nonprod-local"
+            repo_key = f"{project_key or 'bookverse'}-{service_name}-internal-helm-{repo_stage}-local"
             
             aql_query = f'''items.find({{"repo":"{repo_key}","type":"file","name":{{"$match":"*.tgz"}}}}).include("name","path")'''
             aql_url = f"{jfrog_url.rstrip('/')}/artifactory/api/search/aql"
@@ -360,8 +398,8 @@ def compute_next_package_tag(app_key: str, package_name: str, vm: Dict[str, Any]
     elif package_type == "python" or package_type == "pypi":
         try:
             service_name = app_key.replace("bookverse-", "")
-            pypi_repo_key = f"{project_key or 'bookverse'}-{service_name}-internal-pypi-nonprod-local"
-            python_repo_key = f"{project_key or 'bookverse'}-{service_name}-internal-python-nonprod-local"
+            pypi_repo_key = f"{project_key or 'bookverse'}-{service_name}-internal-pypi-{repo_stage}-local"
+            python_repo_key = f"{project_key or 'bookverse'}-{service_name}-internal-python-{repo_stage}-local"
             
             for repo_key in [pypi_repo_key, python_repo_key]:
                 
@@ -412,19 +450,27 @@ def main():
     p.add_argument("--jfrog-token", required=True)
     p.add_argument("--project-key", required=False)
     p.add_argument("--packages", help="Comma-separated package names to compute tags for", required=False)
+    p.add_argument(
+        "--stage",
+        default=os.environ.get("PACKAGE_REPO_STAGE", "DEV"),
+        help="Repository stage (e.g. bookverse-DEV, bookverse-QA). Prefix stripped for repo names.",
+    )
     args = p.parse_args()
 
     vm = load_version_map(args.version_map)
     app_key = args.application_key
     jfrog_url = args.jfrog_url
     token = args.jfrog_token
+    repo_stage = stage_suffix_for_repo(args.stage or "DEV")
 
     app_version = compute_next_application_version(app_key, vm, jfrog_url, token)
 
     pkg_tags: Dict[str, str] = {}
     if args.packages:
         for name in [x.strip() for x in args.packages.split(",") if x.strip()]:
-            pkg_tags[name] = compute_next_package_tag(app_key, name, vm, jfrog_url, token, args.project_key)
+            pkg_tags[name] = compute_next_package_tag(
+                app_key, name, vm, jfrog_url, token, args.project_key, repo_stage
+            )
 
     env_path = os.environ.get("GITHUB_ENV")
     if env_path:

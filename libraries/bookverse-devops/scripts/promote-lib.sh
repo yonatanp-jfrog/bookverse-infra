@@ -210,23 +210,72 @@ apptrust_post() {
   fi
 }
 
+apptrust_get() {
+  local path="${1:-}"; local out_file="${2:-}"
+  local url="${JFROG_URL}${path}"
+  local code
+  local timeout="${APPTRUST_TIMEOUT_SECONDS:-300}"
+  code=$(curl -sS -L -o "$out_file" -w "%{http_code}" \
+    --max-time "$timeout" \
+    -H "Authorization: Bearer ${JF_OIDC_TOKEN}" \
+    -H "Accept: application/json" \
+    "$url" || echo 000)
+  if [[ "$code" -ge 200 && "$code" -lt 300 ]]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+get_promote_repository_keys() {
+  local api_stage="${1:-}"
+  if [[ -z "$api_stage" ]]; then
+    return 0
+  fi
+  local body
+  body=$(mktemp)
+  local path="/access/api/v2/stages/${api_stage}"
+  if [[ -n "${PROJECT_KEY:-}" ]]; then
+    path="${path}?project_key=${PROJECT_KEY}"
+  fi
+  if declare -f apptrust_get &>/dev/null && apptrust_get "$path" "$body"; then
+    jq -r '.repositories[]?' "$body" 2>/dev/null || true
+  fi
+  rm -f "$body"
+}
+
 promote_to_stage() {
   local target_stage_display="${1:-}"
   local resp_body
   resp_body=$(mktemp)
   local api_stage
   api_stage=$(api_stage_for "$target_stage_display")
+
+  local promote_repos=()
+  while IFS= read -r repo; do
+    [[ -n "$repo" && "$repo" == "${APPLICATION_KEY:-}-"* ]] && promote_repos+=("$repo")
+  done < <(get_promote_repository_keys "$api_stage")
+
+  local repos_json=""
+  for repo in "${promote_repos[@]}"; do
+    if [[ -n "$repos_json" ]]; then
+      repos_json="${repos_json},\"${repo}\""
+    else
+      repos_json="\"${repo}\""
+    fi
+  done
+
   echo "🚀 Promoting to ${target_stage_display} via AppTrust"
   # CRITICAL: async=false is REQUIRED for promotions to prevent concurrent promotion conflicts!
   # DO NOT CHANGE TO async=true - it causes "promotion already in progress" failures!
   if apptrust_post \
     "/apptrust/api/v1/applications/${APPLICATION_KEY}/versions/${APP_VERSION}/promote?async=false" \
-    "{\"target_stage\": \"${api_stage}\", \"promotion_type\": \"move\"}" \
+    "{\"target_stage\": \"${api_stage}\", \"promotion_type\": \"copy\", \"included_repository_keys\": [${repos_json}]}" \
     "$resp_body"; then
     echo "HTTP OK"; cat "$resp_body" || true; echo
   else
     echo "❌ Promotion to ${target_stage_display} failed" >&2
-    print_request_info "POST" "${JFROG_URL}/apptrust/api/v1/applications/${APPLICATION_KEY}/versions/${APP_VERSION}/promote?async=false" "{\"target_stage\": \"${api_stage}\", \"promotion_type\": \"move\"}"
+    print_request_info "POST" "${JFROG_URL}/apptrust/api/v1/applications/${APPLICATION_KEY}/versions/${APP_VERSION}/promote?async=false" "{\"target_stage\": \"${api_stage}\", \"promotion_type\": \"copy\", \"included_repository_keys\": [${repos_json}]}"
     cat "$resp_body" || true; echo
     rm -f "$resp_body"
     return 1

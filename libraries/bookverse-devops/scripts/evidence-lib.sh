@@ -12,6 +12,10 @@ export BUILD_NAME="${BUILD_NAME:-${APPLICATION_KEY}_CI_build}"
 export BUILD_NUMBER="${BUILD_NUMBER:-1}"
 export APP_VERSION="${APP_VERSION:-1.0.0}"
 export COVERAGE_PERCENT="${COVERAGE_PERCENT:-85.0}"
+export PACKAGE_REPO_STAGE="${PACKAGE_REPO_STAGE:-DEV}"
+# Strip project prefix (e.g. bookverse-DEV -> DEV) for repo naming
+export PACKAGE_REPO_STAGE_SUFFIX="${PACKAGE_REPO_STAGE##*-}"
+export PACKAGE_REPO_STAGE_SUFFIX="${PACKAGE_REPO_STAGE_SUFFIX:-DEV}"
 
 export GITHUB_SHA="${GITHUB_SHA:-unknown}"
 export GITHUB_REF_NAME="${GITHUB_REF_NAME:-main}"
@@ -21,6 +25,7 @@ echo "📋 Evidence Library: Auto-configured environment variables"
 echo "  SERVICE_NAME: $SERVICE_NAME"
 echo "  APPLICATION_KEY: $APPLICATION_KEY"
 echo "  PROJECT_KEY: $PROJECT_KEY"
+echo "  PACKAGE_REPO_STAGE: $PACKAGE_REPO_STAGE (repo suffix: $PACKAGE_REPO_STAGE_SUFFIX)"
 echo "  BUILD_NAME: $BUILD_NAME"
 echo "  BUILD_NUMBER: $BUILD_NUMBER"
 echo "  APP_VERSION: $APP_VERSION"
@@ -35,18 +40,21 @@ evd_create() {
   local predicate_file="${1:-}"; local predicate_type="${2:-}"; local markdown_file="${3:-}"
   local md_args=()
   if [[ -n "$markdown_file" ]]; then md_args+=(--markdown "$markdown_file"); fi
-  
+
   if [[ "${ATTACH_TO_PACKAGE:-}" == "true" ]]; then
     local url_args=()
     if [[ -n "${JFROG_URL:-${JF_URL:-}}" ]]; then
       url_args+=(--url "${JFROG_URL:-${JF_URL:-}}")
     fi
     
+    # Use lowercase stage suffix for repo keys (Docker requires lowercase in image paths; consistent naming)
+    local stage_lower
+    stage_lower=$(echo "${PACKAGE_REPO_STAGE_SUFFIX}" | tr '[:upper:]' '[:lower:]')
     local package_repo_name
     if [[ "${PACKAGE_NAME:-}" =~ \.(tar\.gz|zip|jar|war|tgz)$ ]] || [[ "${PACKAGE_NAME:-}" =~ ^(config|resources)$ ]]; then
-      package_repo_name="${PROJECT_KEY}-${SERVICE_NAME}-internal-generic-nonprod-local"
+      package_repo_name="${PROJECT_KEY}-${SERVICE_NAME}-internal-generic-${stage_lower}-local"
     else
-      package_repo_name="${PROJECT_KEY}-${SERVICE_NAME}-internal-docker-nonprod-local"
+      package_repo_name="${PROJECT_KEY}-${SERVICE_NAME}-internal-docker-${stage_lower}-local"
     fi
     if ! jf evd create-evidence \
       --predicate "$predicate_file" \
@@ -84,18 +92,19 @@ evd_create() {
       return 1
     fi
   else
-    
+    echo "Predicte file: $predicate_file"
+    # we need to reference evidence association via CLI command, not REST API.  This is a legacy feature.
+    # 
     if ! jf evd create-evidence \
       --predicate "$predicate_file" \
       "${md_args[@]}" \
       --predicate-type "$predicate_type" \
-      --release-bundle "${APPLICATION_KEY}" \
-      --release-bundle-version "${APP_VERSION}" \
-      --project "${PROJECT_KEY}" \
+      --application-key "${APPLICATION_KEY}" \
+      --application-version "${APP_VERSION}" \
       --provider-id github-actions \
       --key "${EVIDENCE_PRIVATE_KEY:-}" \
       --key-alias "${EVIDENCE_KEY_ALIAS:-${EVIDENCE_KEY_ALIAS_VAR:-}}"; then
-      echo "❌ Failed to attach evidence to release bundle ${APPLICATION_KEY}:${APP_VERSION}" >&2
+      echo "❌ Failed to attach evidence to Application Version ${APPLICATION_KEY}:${APP_VERSION}" >&2
       echo "🔍 Check EVIDENCE_PRIVATE_KEY and EVIDENCE_KEY_ALIAS configuration" >&2
       return 1
     fi

@@ -26,6 +26,7 @@ JFROG_URL=""
 JFROG_TOKEN=""
 PROJECT_KEY=""
 PACKAGES=""
+STAGE="${PACKAGE_REPO_STAGE:-DEV}"
 VERBOSE=false
 
 while [[ $# -gt 0 ]]; do
@@ -54,6 +55,10 @@ while [[ $# -gt 0 ]]; do
             PACKAGES="$2"
             shift 2
             ;;
+        --stage)
+            STAGE="$2"
+            shift 2
+            ;;
         --verbose|-v)
             VERBOSE=true
             shift
@@ -70,6 +75,7 @@ while [[ $# -gt 0 ]]; do
             echo "Optional arguments:"
             echo "  --project-key KEY       Project key (default: bookverse)"
             echo "  --packages LIST         Comma-separated package names"
+            echo "  --stage STAGE           Repo stage for version lookup (default: DEV, or PACKAGE_REPO_STAGE env)"
             echo "  --verbose, -v           Enable verbose output"
             echo "  --help, -h              Show this help message"
             exit 0
@@ -120,6 +126,10 @@ fi
 
 if [[ -n "$PACKAGES" ]]; then
     PYTHON_ARGS+=(--packages "$PACKAGES")
+fi
+
+if [[ -n "$STAGE" ]]; then
+    PYTHON_ARGS+=(--stage "$STAGE")
 fi
 
 if [[ "$VERBOSE" == "true" ]]; then
